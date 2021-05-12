@@ -15,6 +15,7 @@
 #include <sys/sem.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
+#include "colors.h"
 
 /* Variáveis globais */
 int msg_id;             // ID da Fila de Mensagens IPC usada
@@ -48,13 +49,13 @@ int main() {    // Não é suposto que os alunos alterem nada na função main()
     // S1) Chama a função init_ipc(), que tenta criar uma fila de mensagens que tem a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas). Deve assumir que a fila de mensagens já foi criada. Se tal não aconteceu, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche a variável global msg_id;
     init_ipc();
     // S2) Chama a função init_database(), que inicia a base de dados
-    init_database();
-    while (TRUE) {
+	init_database();
+    //while (TRUE) {
         // S3) Chama a função espera_mensagem_cidadao(), que espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
-        espera_mensagem_cidadao();
+       // espera_mensagem_cidadao();
         // S4) O comportamento do processo Servidor agora irá depender da mensagem enviada pelo processo Cidadão no campo pedido:
-        trata_mensagem_cidadao();
-    }
+     //   trata_mensagem_cidadao();
+   // }
 }
 
 /**
@@ -71,18 +72,22 @@ void init_ipc() {
     // S1) Tenta criar:
     // Todos estes elementos têm em comum serem criados com a KEY IPC_KEY definida em common.h (alterar esta KEY para ter o valor do nº do aluno, como indicado nas aulas), e com permissões 0600. Se qualquer um destes elementos IPC já existia anteriormente, dá erro e termina com exit status 1. Esta função, em caso de sucesso, preenche as variáveis globais respetivas msg_id, sem_id, e shm_id;
     // • uma fila de mensagens IPC;
-    // exit_on_error(<var>, "S1) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
+	msg_id = msgget(IPC_KEY, IPC_CREAT | IPC_EXCL | 0600);
+    exit_on_error(msg_id, "S1) Fila de Mensagens com a Key definida já existe ou não pode ser criada");
 
     // • um array de semáforos IPC de dimensão 1;
-    // exit_on_error(<var>, "S1) Semáforo com a Key definida já existe ou não pode ser criada");
+	sem_id = semget(IPC_KEY, 1, IPC_CREAT | IPC_EXCL | 0600);
+    exit_on_error(sem_id, "S1) Semáforo com a Key definida já existe ou não pode ser criada");
 
     // O semáforo em questão será usado com o padrão “Mutex”, pelo que será iniciado com o valor 1;
-    // exit_on_error(<var>, "S1) Semáforo com a Key definida não pode ser iniciado com o valor 1");
+	int status = semctl(sem_id, 0, SETVAL, 1);
+    exit_on_error(status, "S1) Semáforo com a Key definida não pode ser iniciado com o valor 1");
 
     // • uma memória partilhada IPC de dimensão suficiente para conter um elemento Database.
-    // exit_on_error(<var>, "S1) Memória Partilhada com a Key definida já existe ou não pode ser criada");
+	shm_id = shmget(IPC_KEY, sizeof(Database), IPC_CREAT | IPC_EXCL | 0600);
+    exit_on_error(shm_id, "S1) Memória Partilhada com a Key definida já existe ou não pode ser criada");
 
-    // sucesso("S1) Criados elementos IPC com a Key 0x%x: MSGid %d, SEMid %d, SHMid %d", IPC_KEY, msg_id, sem_id, shm_id);
+    sucesso("S1) Criados elementos IPC com a Key 0x%x: MSGid %d, SEMid %d, SHMid %d", IPC_KEY, msg_id, sem_id, shm_id);
 
     debug(">");
 }
@@ -147,17 +152,27 @@ void init_database() {
 
     // S2) Inicia a base de dados:
     // • Associa a variável global db com o espaço de Memória Partilhada alocado para shm_id; se não o conseguir, dá erro e termina com exit status 1;
-    // exit_on_null(<var>, "S2) Erro a ligar a Memória Dinâmica ao projeto");
+    db = shmat(shm_id,0, 0);
+	exit_on_null(db, "S2) Erro a ligar a Memória Dinâmica ao projeto");
 
     // • Lê o ficheiro FILE_CIDADAOS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->cidadaos e db->num_cidadaos. Se não o conseguir, dá erro e termina com exit status 1;
- 
+	db->num_cidadaos = read_binary(FILE_CIDADAOS, db->cidadaos, sizeof(db->cidadaos))/sizeof(Cidadao);
     // • Lê o ficheiro FILE_ENFERMEIROS e armazena o seu conteúdo na base de dados usando a função read_binary(), assim preenchendo os campos db->enfermeiros e db->num_enfermeiros. Se não o conseguir, dá erro e termina com exit status 1;
- 
+	db->num_enfermeiros = read_binary(FILE_ENFERMEIROS, db->enfermeiros, sizeof(db->enfermeiros))/sizeof(Enfermeiro);
     // • Inicia a Base de Dados de Vagas, db->vagas, colocando o campo index_cidadao de todos os elementos com o valor -1.
+	for(int i=0; i<MAX_VAGAS; i++){
+		db->vagas[i].index_cidadao = -1;
+		debug(MAGHB"Vaga"reset" %d com index_cidadao: %d", i, db->vagas[i].index_cidadao);
+	}
+    sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", db->num_cidadaos, db->num_enfermeiros);
 
-    // sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", <num_cidadaos>, <num_enfermeiros>);
+	for(int i=0; i<MAX_CIDADAOS; i++)
+		debug(GRNHB "Database cid[%d]:" reset "num:" BHYEL "%d" reset " nome:" BHMAG "%s" reset " idade:" BHCYN "%d" reset " localidade:" BHBLU "%s" reset " nr_telemovel:" BHRED "%s" reset " estado vac:" BHWHT "%d"reset" PID:"BHBLK"%d"reset reset, i, db->cidadaos[i].num_utente, db->cidadaos[i].nome,db->cidadaos[i].idade, db->cidadaos[i].localidade, db->cidadaos[i].nr_telemovel, db->cidadaos[i].estado_vacinacao, db->cidadaos[i].PID_cidadao);
 
-    debug(">");
+	for(int i=0; i<MAX_ENFERMEIROS; i++)
+		debug(CYNHB "Database enf[%d]:"reset"ced:"BHYEL"%d"reset" nome:"BHMAG"%s"reset" CS:"BHCYN"%s"reset" vac:"BHBLU"%d"reset" disp:"BHRED"%d" reset, i, db->enfermeiros[i].ced_profissional, db->enfermeiros[i].nome, db->enfermeiros[i].CS_enfermeiro, db->enfermeiros[i].nr_vacinas_dadas, db->enfermeiros[i].disponibilidade);
+	
+	debug(">");
 }
 
 /**
