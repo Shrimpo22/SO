@@ -50,12 +50,14 @@ int main() {    // Não é suposto que os alunos alterem nada na função main()
     init_ipc();
     // S2) Chama a função init_database(), que inicia a base de dados
 	init_database();
-    //while (TRUE) {
+    while (TRUE) {
         // S3) Chama a função espera_mensagem_cidadao(), que espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a mensagem enviada pelo processo Cidadão na variável global mensagem; em caso de erro, termina com erro e exit status 1;
-       // espera_mensagem_cidadao();
-        // S4) O comportamento do processo Servidor agora irá depender da mensagem enviada pelo processo Cidadão no campo pedido:
-     //   trata_mensagem_cidadao();
-   // }
+        espera_mensagem_cidadao();
+		debug(MAGHB"Mensagem tipo: %d, pedido:%d, num_utente:%d, nome:%s, PID: %d" reset, mensagem.tipo, mensagem.dados.pedido, mensagem.dados.num_utente, mensagem.dados.nome, mensagem.dados.PID_cidadao);
+        debug(YELHB"Resposta tipo: %d, status:%d, nome: %s"reset, resposta.tipo, resposta.dados.status, resposta.dados.cidadao.nome);
+		// S4) O comportamento do processo Servidor agora irá depender da mensagem enviada pelo processo Cidadão no campo pedido:
+		trata_mensagem_cidadao();
+    }
 }
 
 /**
@@ -184,11 +186,11 @@ void espera_mensagem_cidadao() {
 
     // Espera uma mensagem (na fila de mensagens com o tipo = 1) e preenche a variável global mensagem,
     // assim como preenche o tipo da resposta com o PID_cidadao recebido.
-
+	int status = msgrcv(msg_id, &mensagem, sizeof(mensagem.dados), 1, 0);
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "Não é possível ler a mensagem do Cidadao");
-    // sucesso("Cidadão enviou mensagem");
-
+    exit_on_error(status, "Não é possível ler a mensagem do Cidadao");
+    sucesso("Cidadão enviou mensagem");
+	resposta.tipo = mensagem.dados.PID_cidadao;
     debug(">");
 }
 
@@ -200,17 +202,17 @@ void trata_mensagem_cidadao() {
 
     // S4) O comportamento do processo Servidor agora irá depender da variável global mensagem enviada pelo processo Cidadão no campo pedido
 
-    // if (...) {
+    if (mensagem.dados.pedido == PEDIDO) {
         // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
         // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("S4.1) Novo pedido de vacinação de %d: %d, %s", <PID_cidadao>, <num_utente>, <nome>);
+        sucesso("S4.1) Novo pedido de vacinação de %d: %d, %s", resposta.tipo, mensagem.dados.num_utente, mensagem.dados.nome);
         processa_pedido();
-    // } else if (...) {
+    } else if (mensagem.dados.pedido == CANCELAMENTO) {
         // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
         // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        // sucesso("S4.2) Cancelamento de vacinação de %d: %d, %s", <PID_cidadao>, <num_utente>, <nome>);
+        sucesso("S4.2) Cancelamento de vacinação de %d: %d, %s", resposta.tipo, mensagem.dados.num_utente, mensagem.dados.nome);
         cancela_pedido();
-    // }
+    }
 
     debug(">");
 }
@@ -239,16 +241,44 @@ void processa_pedido() {
     //       • Se o utilizador (Cidadão) for encontrado na BD Cidadãos, os dados do cidadão deverão ser copiados da BD Cidadãos para o campo cidadao da resposta;
     //       • Se o Cidadão na BD Cidadãos tiver estado_vacinacao = 2 => status = VACINADO;
     //       • Se o Cidadão na BD Cidadãos tiver PID_cidadao > 0 => status = EMCURSO; caso contrário, afeta o PID_cidadao da BD Cidadãos com o valor do PID_cidadao da mensagem;
-    // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", <num_utente>, <nome>);
-    // sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", <num_utente>, <nome>, <estado_vacinacao>, <status>);
+   
 
+	// Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
+	for(int i=0; i<MAX_CIDADAOS; i++){
+		if(db->cidadaos[i].num_utente == mensagem.dados.num_utente && db->cidadaos[i].nome == mensagem.dados.nome)
+			resposta.dados.cidadao = db->cidadaos[i];
+			if(resposta.dados.cidadao.estado_vacinacao == 2){
+				resposta.dados.status = VACINADO;
+			}
+			if(resposta.dados.cidadao.PID_cidadao > 0){
+				resposta.dados.status = EMCURSO;
+			}else{
+				db->cidadaos[i].PID_cidadao = mensagem.dados.PID_cidadao;
+			}
+			sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", db->cidadaos[i].num_utente, db->cidadaos[i].nome, db->cidadaos[i].estado_vacinacao, resposta.dados.status);
+	}
+	if(resposta.dados.cidadao.nome == NULL){
+		erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", mensagem.dados.num_utente, mensagem.dados.nome);
+		resposta.dados.status = DESCONHECIDO;
+    }
     // S5.2) Caso o Cidadão esteja em condições de ser vacinado (i.e., se status não for DESCONHECIDO, VACINADO nem EMCURSO), procura o enfermeiro correspondente na BD Enfermeiros:
     //       • Se não houver centro de saúde, ou não houver nenhum enfermeiro no centro de saúde correspondente => status = NAOHAENFERMEIRO;
     //       • Se há enfermeiro, mas este não tiver disponibilidade => status = AGUARDAR.
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", <localidade>);
-    // sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", <localidade>, <disponibilidade>, <status>);
+    if(resposta.dados.status != DESCONHECIDO && resposta.dados.status != VACINADO && resposta.dados.status != EMCURSO){
+		char wcs[100] = "CS";
+		strcat(wcs, resposta.dados.cidadao.localidade);
+		for(int i=0; i<MAX_ENFERMEIROS; i++){
+			if(db->enfermeiros[i].CS_enfermeiro == wcs){
+				if(db->enfermeiros[i].disponibilidade == 0){
+					resposta.dados.status = AGUARDAR;
+				}
+				sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", resposta.dados.cidadao.localidade, db->enfermeiros[i].disponibilidade, resposta.dados.status);
+			}
+		}
+		erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", resposta.dados.cidadao.localidade);
+		resposta.dados.status = NAOHAENFERMEIRO;
+	}
 
     // S5.3) Caso o enfermeiro esteja disponível, procura uma vaga para vacinação na BD Vagas. Para tal, chama a função reserva_vaga(Index_Cidadao, Index_Enfermeiro) usando os índices do Cidadão e do Enfermeiro nas respetivas BDs:
     //      • Se essa função tiver encontrado e reservado uma vaga => status = OK;

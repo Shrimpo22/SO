@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/msg.h>
-
+#include "colors.h"
 /* Variáveis globais */
 int msg_id;             // ID da Fila de Mensagens usada
 MsgCliente mensagem;    // Variável que tem a mensagem enviada do Cidadao para o Servidor
@@ -119,6 +119,7 @@ void pedido() {
 	do{
         // C3) Envia um pedido de consulta de vacinação para o processo Servidor, chamando a função envia_mensagem_servidor(), que envia uma mensagem para a fila de mensagens com tipo 1, com pedido = PEDIDO e os dados do cidadão; em caso de erro, termina com erro e exit status 1.
         envia_mensagem_servidor();
+		debug(GRNHB"Tipo Mensagem: %d" reset, mensagem.tipo);
         // C4) Chama a função espera_resposta_servidor(), que espera a resposta do processo Servidor (na fila de mensagens com o tipo = PID_Cidadao) e preenche a mensagem enviada pelo processo Servidor na variável global resposta; em caso de erro, termina com erro e exit status 1.
         espera_resposta_servidor();
 
