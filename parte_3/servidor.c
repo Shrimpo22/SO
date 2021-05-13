@@ -245,8 +245,10 @@ void processa_pedido() {
 
 	// Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
 	for(int i=0; i<MAX_CIDADAOS; i++){
-		if(db->cidadaos[i].num_utente == mensagem.dados.num_utente && db->cidadaos[i].nome == mensagem.dados.nome)
+		debug("Data base num: %d msg num: %d database nome: %s msg nome: %s", db->cidadaos[i].num_utente,  mensagem.dados.num_utente, db->cidadaos[i].nome, mensagem.dados.nome);
+		if(db->cidadaos[i].num_utente == mensagem.dados.num_utente && db->cidadaos[i].nome == mensagem.dados.nome){
 			resposta.dados.cidadao = db->cidadaos[i];
+			debug(MAG"Primeiro If"reset);
 			if(resposta.dados.cidadao.estado_vacinacao == 2){
 				resposta.dados.status = VACINADO;
 			}
@@ -256,6 +258,7 @@ void processa_pedido() {
 				db->cidadaos[i].PID_cidadao = mensagem.dados.PID_cidadao;
 			}
 			sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", db->cidadaos[i].num_utente, db->cidadaos[i].nome, db->cidadaos[i].estado_vacinacao, resposta.dados.status);
+		}
 	}
 	if(resposta.dados.cidadao.nome == NULL){
 		erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", mensagem.dados.num_utente, mensagem.dados.nome);
