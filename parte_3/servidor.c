@@ -1,7 +1,7 @@
 /******************************************************************************
  ** ISCTE-IUL: Trabalho prático 3 de Sistemas Operativos
  **
- ** Aluno: Nº:       Nome: 
+ ** Aluno: Nº: 98654      Nome: Vasco do Nascimento Paiva Araújo
  ** Nome do Módulo: servidor.c v3
  ** Descrição/Explicação do Módulo: 
  **
@@ -163,17 +163,17 @@ void init_database() {
 	db->num_enfermeiros = read_binary(FILE_ENFERMEIROS, db->enfermeiros, sizeof(db->enfermeiros))/sizeof(Enfermeiro);
     // • Inicia a Base de Dados de Vagas, db->vagas, colocando o campo index_cidadao de todos os elementos com o valor -1.
 	for(int i=0; i<MAX_VAGAS; i++){
-		db->vagas[i].index_cidadao = -1;
+		liberta_vaga(i);
 		debug(MAGHB"Vaga"reset" %d com index_cidadao: %d", i, db->vagas[i].index_cidadao);
 	}
     sucesso("S2) Base de dados carregada com %d cidadãos e %d enfermeiros", db->num_cidadaos, db->num_enfermeiros);
 
-	for(int i=0; i<MAX_CIDADAOS; i++)
+	/*for(int i=0; i<MAX_CIDADAOS; i++)
 		debug(GRNHB "Database cid[%d]:" reset "num:" BHYEL "%d" reset " nome:" BHMAG "%s" reset " idade:" BHCYN "%d" reset " localidade:" BHBLU "%s" reset " nr_telemovel:" BHRED "%s" reset " estado vac:" BHWHT "%d"reset" PID:"BHBLK"%d"reset reset, i, db->cidadaos[i].num_utente, db->cidadaos[i].nome,db->cidadaos[i].idade, db->cidadaos[i].localidade, db->cidadaos[i].nr_telemovel, db->cidadaos[i].estado_vacinacao, db->cidadaos[i].PID_cidadao);
 
 	for(int i=0; i<MAX_ENFERMEIROS; i++)
 		debug(CYNHB "Database enf[%d]:"reset"ced:"BHYEL"%d"reset" nome:"BHMAG"%s"reset" CS:"BHCYN"%s"reset" vac:"BHBLU"%d"reset" disp:"BHRED"%d" reset, i, db->enfermeiros[i].ced_profissional, db->enfermeiros[i].nome, db->enfermeiros[i].CS_enfermeiro, db->enfermeiros[i].nr_vacinas_dadas, db->enfermeiros[i].disponibilidade);
-	
+	*/
 	debug(">");
 }
 
@@ -205,7 +205,7 @@ void trata_mensagem_cidadao() {
     if (mensagem.dados.pedido == PEDIDO) {
         // S4.1) Se o pedido for PEDIDO, imprime uma mensagem e avança para o passo S5;
         // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-        sucesso("S4.1) Novo pedido de vacinação de %d: %d, %s", resposta.tipo, mensagem.dados.num_utente, mensagem.dados.nome);
+        sucesso("S4.1) Novo pedido de vacinação de %d: %d, %s", mensagem.dados.PID_cidadao, mensagem.dados.num_utente, mensagem.dados.nome);
         processa_pedido();
     } else if (mensagem.dados.pedido == CANCELAMENTO) {
         // S4.2) Se o estado for CANCELAMENTO, imprime uma mensagem, e avança para o passo S10;
@@ -224,8 +224,13 @@ void envia_resposta_cidadao() {
     debug("<");
 
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "Não é possível enviar resposta para o cidadão");
-    // sucesso("Resposta para o cidadão enviada");
+    debug("envia_resposta status: %d", resposta.dados.status);
+    int sent = msgsnd(msg_id, &resposta, sizeof(resposta.dados), IPC_NOWAIT);
+
+    resposta.dados.status = 0;     // para evitar usar o status de outras mensagens
+    
+    exit_on_error(sent, "Não é possível enviar resposta para o cidadão");
+    sucesso("Resposta para o cidadão enviada");
 
     debug(">");
 }
@@ -244,59 +249,101 @@ void processa_pedido() {
    
 
 	// Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-	for(int i=0; i<MAX_CIDADAOS; i++){
-		debug("Data base num: %d msg num: %d database nome: %s msg nome: %s", db->cidadaos[i].num_utente,  mensagem.dados.num_utente, db->cidadaos[i].nome, mensagem.dados.nome);
-		if(db->cidadaos[i].num_utente == mensagem.dados.num_utente && db->cidadaos[i].nome == mensagem.dados.nome){
-			resposta.dados.cidadao = db->cidadaos[i];
-			debug(MAG"Primeiro If"reset);
+	int found = 0;
+	int index_cidadao;
+    sem_mutex_down();
+	for(index_cidadao=0; index_cidadao<db->num_cidadaos; index_cidadao++){
+		debug(MAGHB"Data base num: %d msg num: %d database nome: %s msg nome: %s"reset, db->cidadaos[index_cidadao].num_utente,  mensagem.dados.num_utente, db->cidadaos[index_cidadao].nome, mensagem.dados.nome);
+		if(db->cidadaos[index_cidadao].num_utente == mensagem.dados.num_utente && !strcmp(db->cidadaos[index_cidadao].nome, mensagem.dados.nome)){
+			found = 1;
+			resposta.dados.cidadao = db->cidadaos[index_cidadao];
+			debug("Primeiro If");
 			if(resposta.dados.cidadao.estado_vacinacao == 2){
 				resposta.dados.status = VACINADO;
+                debug("Resposta status= %d", resposta.dados.status);
 			}
 			if(resposta.dados.cidadao.PID_cidadao > 0){
 				resposta.dados.status = EMCURSO;
+                debug("Resposta status= %d", resposta.dados.status);
 			}else{
-				db->cidadaos[i].PID_cidadao = mensagem.dados.PID_cidadao;
+				db->cidadaos[index_cidadao].PID_cidadao = mensagem.dados.PID_cidadao;
 			}
-			sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", db->cidadaos[i].num_utente, db->cidadaos[i].nome, db->cidadaos[i].estado_vacinacao, resposta.dados.status);
+			break;
 		}
 	}
-	if(resposta.dados.cidadao.nome == NULL){
+    sem_mutex_up();
+	debug(YEL "Index_cidadao: %d" reset, index_cidadao);
+    debug(MAGHB"found: %d"reset, found);
+    debug("cidadao found: %d", found);
+	if(found == 0){
 		erro("S5.1) Cidadão %d, %s  não foi encontrado na BD Cidadãos", mensagem.dados.num_utente, mensagem.dados.nome);
 		resposta.dados.status = DESCONHECIDO;
-    }
+    }else{
+		sucesso("S5.1) Cidadão %d, %s encontrado, estado_vacinacao=%d, status=%d", db->cidadaos[index_cidadao].num_utente, db->cidadaos[index_cidadao].nome, db->cidadaos[index_cidadao].estado_vacinacao, resposta.dados.status);
+	}
     // S5.2) Caso o Cidadão esteja em condições de ser vacinado (i.e., se status não for DESCONHECIDO, VACINADO nem EMCURSO), procura o enfermeiro correspondente na BD Enfermeiros:
     //       • Se não houver centro de saúde, ou não houver nenhum enfermeiro no centro de saúde correspondente => status = NAOHAENFERMEIRO;
     //       • Se há enfermeiro, mas este não tiver disponibilidade => status = AGUARDAR.
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    if(resposta.dados.status != DESCONHECIDO && resposta.dados.status != VACINADO && resposta.dados.status != EMCURSO){
-		char wcs[100] = "CS";
+    int found_enf=0;
+	int index_enf;
+    debug("Found_enf 1: %d", found_enf);
+    // acrescentei no if em baixo uma condição 
+	if(resposta.dados.status != DESCONHECIDO && resposta.dados.status != VACINADO && resposta.dados.status != EMCURSO){
+		char wcs[102] = "CS";
 		strcat(wcs, resposta.dados.cidadao.localidade);
-		for(int i=0; i<MAX_ENFERMEIROS; i++){
-			if(db->enfermeiros[i].CS_enfermeiro == wcs){
-				if(db->enfermeiros[i].disponibilidade == 0){
+		debug(MAG"wcs: %s localidade: %s" reset, wcs, resposta.dados.cidadao.localidade);
+        sem_mutex_down();
+		for(index_enf=0; index_enf<db->num_enfermeiros; index_enf++){
+			debug(RED"enf CS: %s"reset MAG" WCS: %s" reset, db->enfermeiros[index_enf].CS_enfermeiro, wcs);
+			debug(CYNHB"_==_: %d"reset, strcmp(db->enfermeiros[index_enf].CS_enfermeiro, wcs));
+            debug("FOUND_ENF: %d", found_enf);
+			if(!strcmp(db->enfermeiros[index_enf].CS_enfermeiro, wcs)){
+				debug("enf if");
+				found_enf=1;
+                debug("FOUND_ENF IF FOUND: %d", found_enf);
+                debug(YELHB "Enf cs: %s disp: %d"reset ,db->enfermeiros[index_enf].CS_enfermeiro, db->enfermeiros[index_enf].disponibilidade);
+				if(db->enfermeiros[index_enf].disponibilidade == 0){
 					resposta.dados.status = AGUARDAR;
 				}
-				sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", resposta.dados.cidadao.localidade, db->enfermeiros[i].disponibilidade, resposta.dados.status);
+				break;
 			}
 		}
-		erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", resposta.dados.cidadao.localidade);
-		resposta.dados.status = NAOHAENFERMEIRO;
-	}
-
+        sem_mutex_up();
+        debug("found_enf == %d", found_enf);
+	    if(found_enf==0){
+		    erro("S5.2) Enfermeiro do CS %s não foi encontrado na BD Cidadãos", resposta.dados.cidadao.localidade);
+            resposta.dados.status = NAOHAENFERMEIRO;
+	    }else{
+		    sucesso("S5.2) Enfermeiro do CS %s encontrado, disponibilidade=%d, status=%d", resposta.dados.cidadao.localidade, db->enfermeiros[index_enf].disponibilidade, resposta.dados.status);
+	    }
+    }	
     // S5.3) Caso o enfermeiro esteja disponível, procura uma vaga para vacinação na BD Vagas. Para tal, chama a função reserva_vaga(Index_Cidadao, Index_Enfermeiro) usando os índices do Cidadão e do Enfermeiro nas respetivas BDs:
     //      • Se essa função tiver encontrado e reservado uma vaga => status = OK;
     //      • Se essa função não conseguiu encontrar uma vaga livre => status = AGUARDAR.
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S5.3) Não foi encontrada nenhuma vaga livre para vacinação");
-    // sucesso("S5.3) Foi reservada a vaga %d para vacinação, status=%d", <index_vaga>, <status>);
-
+    if(found_enf != 0){
+        sem_mutex_down();
+        if(db->enfermeiros[index_enf].disponibilidade != 0){
+            sem_mutex_up();
+            if(reserva_vaga(index_cidadao, index_enf)==-1){
+                erro("S5.3) Não foi encontrada nenhuma vaga livre para vacinação");
+                resposta.dados.status = AGUARDAR;
+            }else{
+                sucesso("S5.3) Foi reservada a vaga %d para vacinação, status=%d", vaga_ativa, resposta.dados.status);
+                resposta.dados.status = OK;
+            }  
+        }
+    }
     // S5.4) Se no final de todos os checks, status for OK, chama a função vacina(),
-    // if (OK == <status>)
-    //    vacina();
+    if(OK == resposta.dados.status){
+        debug("OK ==");
+        vacina();
     // S5.4) caso contrário, chama a função envia_resposta_cidadao(), que envia a resposta ao Cidadão;
-    // else
-    //     envia_resposta_cidadao();
-
+    }else{
+        debug("OK !=");
+        envia_resposta_cidadao();
+    }
     debug(">");
 }
 
@@ -308,15 +355,23 @@ void vacina() {
 
     // S6.1) Cria um processo filho através da função fork();
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // exit_on_error(<var>, "S6.1) Não foi possível criar um novo processo");
-    // sucesso("S6.1) Criado um processo filho com PID_filho=%d", <PID_filho>);
+    int PID_filho=fork();
+    exit_on_error(PID_filho, "S6.1) Não foi possível criar um novo processo");
+    if(PID_filho != 0)
+        sucesso("S6.1) Criado um processo filho com PID_filho=%d", PID_filho);
 
-    // if (...) {   // Processo FILHO
+    if (PID_filho == 0) {   // Processo FILHO
         // S6.2) O processo filho chama a função servidor_dedicado();
-        // servidor_dedicado();
-    // } else {     // Processo PAI
-        // S6.3) O processo pai regista o process ID do processo filho no campo PID_filho na BD de Vagas com o índice da variável global vaga_ativa;
-    //}
+        debug(CYNHB"On Process Son: %d, PID_filho: %d"reset, getpid(), PID_filho);
+        servidor_dedicado();
+    } else {     // Processo PAI
+        //S6.3) O processo pai regista o process ID do processo filho no campo PID_filho na BD de Vagas com o índice da variável global vaga_ativa;
+        sem_mutex_down();
+        db->vagas[vaga_ativa].PID_filho = PID_filho;
+        sem_mutex_up();
+        debug("vaga_ativa: %d", vaga_ativa);
+        debug(CYNHB"On Process Father: %d, PID_filho: %d"reset, getpid(), PID_filho);
+    }
 
     debug(">");
 }
@@ -331,18 +386,29 @@ void servidor_dedicado() {
     signal(SIGTERM, termina_servidor_dedicado);
 
     // S7.2) Envia a resposta para o Cidadao, chamando a função envia_resposta_cidadao(). Implemente também esta função, que envia a mensagem resposta para o cidadao, contendo os dados do Cidadao preenchidos em S5.1 e o campo status = OK;
+    resposta.dados.status = OK;
     envia_resposta_cidadao();
 
     // S7.3) Coloca a disponibilidade do enfermeiro afeto à vaga_ativa com o valor 0 (Indisponível);
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S7.3) Enfermeiro associado à vaga %d indisponível", <vaga_ativa>);
+    sem_mutex_down();
+    debug("DEDICATED SERVER VAGA_ATIVA: %d", vaga_ativa);
+    int index_enf = db->vagas[vaga_ativa].index_enfermeiro;
+    debug("DEDICATED SERVER ENF INDEX: %d", index_enf);
+    debug("DISP ENF BF: %d", db->enfermeiros[index_enf].disponibilidade);
+    db->enfermeiros[index_enf].disponibilidade = 0;
+    debug("DISP ENF AF: %d", db->enfermeiros[index_enf].disponibilidade);
+    sem_mutex_up();
+
+    sucesso("S7.3) Enfermeiro associado à vaga %d indisponível", vaga_ativa);
 
     // S7.4) Imprime uma mensagem;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S7.4) Vacina em curso para o cidadão %d, %s, e com o enfermeiro %d, %s na vaga %d", <num_utente>, <nome cidadao>, <ced_profissional>, <nome enfermeiro>, <vaga_ativa>);
+    sucesso("S7.4) Vacina em curso para o cidadão %d, %s, e com o enfermeiro %d, %s na vaga %d", db->cidadaos[db->vagas[vaga_ativa].index_cidadao].num_utente, db->cidadaos[db->vagas[vaga_ativa].index_cidadao].nome, db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].ced_profissional, db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].nome, vaga_ativa);
     // S7.4) Aguarda (em espera passiva!) TEMPO_CONSULTA segundos;
-
+    sleep(TEMPO_CONSULTA);
     // S7.5) Envia nova resposta para o Cidadao, chamando a função envia_resposta_cidadao() contendo os dados do Cidadao preenchidos em S5.1 e o campo status = TERMINADA, para indicar que a consulta terminou com sucesso;
+    resposta.dados.status = TERMINADA;
     envia_resposta_cidadao();
 
     // S7.6) Atualiza os dados do cidadão (incrementa estado_vacinacao) na BD de Cidadãos
@@ -350,15 +416,24 @@ void servidor_dedicado() {
     // S7.6) Atualiza os dados do enfermeiro (incrementa nr_vacinas_dadas) na BD de Enfermeiros;
     // S7.6) Atualiza os dados do enfermeiro (coloca disponibilidade=1) na BD de Enfermeiros;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S7.6) Cidadão atualizado na BD para estado_vacinacao=%d, Enfermeiro atualizado na BD para nr_vacinas_dadas=%d e disponibilidade=%d", <estado_vacinacao>, <nr_vacinas_dadas>, <disponibilidade>);
+    sem_mutex_down();
+    db->cidadaos[db->vagas[vaga_ativa].index_cidadao].estado_vacinacao ++;
+    debug("NAME: %s PID BF: %d", db->cidadaos[db->vagas[vaga_ativa].index_cidadao].nome, db->cidadaos[db->vagas[vaga_ativa].index_cidadao].PID_cidadao);
+    db->cidadaos[db->vagas[vaga_ativa].index_cidadao].PID_cidadao = -1;
+    debug("NAME: %s PID AF: %d", db->cidadaos[db->vagas[vaga_ativa].index_cidadao].nome, db->cidadaos[db->vagas[vaga_ativa].index_cidadao].PID_cidadao);
 
+    db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].nr_vacinas_dadas ++;
+    db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].disponibilidade = 1;
+
+    sucesso("S7.6) Cidadão atualizado na BD para estado_vacinacao=%d, Enfermeiro atualizado na BD para nr_vacinas_dadas=%d e disponibilidade=%d", db->cidadaos[db->vagas[vaga_ativa].index_cidadao].estado_vacinacao, db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].nr_vacinas_dadas, db->enfermeiros[db->vagas[vaga_ativa].index_enfermeiro].disponibilidade);
+    sem_mutex_up();
     // S7.7) Liberta a vaga vaga_ativa da BD de Vagas, invocando a função liberta_vaga(vaga_ativa);
     liberta_vaga(vaga_ativa);
 
     // S7.8) Termina o processo Servidor Dedicado (filho) com exit status 0.
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S7.8) Servidor dedicado Terminado"); 
-
+    sucesso("S7.8) Servidor dedicado Terminado"); 
+    exit(0);
     debug(">");
 }
 
@@ -370,13 +445,24 @@ int reserva_vaga(int index_cidadao, int index_enfermeiro) {
 
     vaga_ativa = -1;
     // S8.1) Procura uma vaga livre (index_cidadao < 0) na BD de Vagas. Se encontrar uma entrada livre:
-
+    int i;
+    sem_mutex_down();
+    for(i = 0; i<MAX_VAGAS; i++){
+        debug("Vaga[%d] index_cidadao: %d", i, db->vagas[i].index_cidadao);
+        if(db->vagas[i].index_cidadao < 0)
+            break;
+    }
+    sem_mutex_up();
     // S8.1.1) Atualiza o valor da variável global vaga_ativa com o índice da vaga encontrada;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S8.1.1) Encontrou uma vaga livre com o index %d", <vaga_ativa>);
+    vaga_ativa = i;
+    sucesso("S8.1.1) Encontrou uma vaga livre com o index %d", vaga_ativa);
 
     // S8.1.2) Atualiza a entrada de Vagas vaga_ativa com o índice do cidadão e do enfermeiro
-
+    sem_mutex_down();
+    db->vagas[vaga_ativa].index_cidadao = index_cidadao;
+    db->vagas[vaga_ativa].index_enfermeiro = index_enfermeiro;
+    sem_mutex_up();
     // S8.1.3) Retorna o valor do índice de vagas vaga_ativa ou -1 se não encontrou nenhuma vaga
     return vaga_ativa;
 
@@ -388,8 +474,9 @@ int reserva_vaga(int index_cidadao, int index_enfermeiro) {
  */
 void liberta_vaga(int index_vaga) {
     debug("<");
-
-
+    sem_mutex_down();
+    db->vagas[index_vaga].index_cidadao = -1;
+    sem_mutex_up();
     debug(">");
 }
 
@@ -402,13 +489,25 @@ void cancela_pedido() {
     // S10) Processa o cancelamento de um pedido de vacinação e envia uma resposta ao processo Cidadão. Para este efeito, a função:
     // S10.1) Procura na BD de Vagas a vaga correspondente ao Cidadao em questão (procura por index_cidadao). Se encontrar a entrada correspondente, obtém o PID_filho do Servidor Dedicado correspondente;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // erro("S10.1) Não foi encontrada nenhuma sessão do cidadão %d, %s", <num_utente>, <nome cidadao>);
-    // sucesso("S10.1) Foi encontrada a sessão do cidadão %d, %s na sala com o index %d", <num_utente>, <nome cidadao>, <vaga_ativa>);
+    int PID_filho = 0;
+    sem_mutex_down();
+    for(int i=0; i<MAX_VAGAS; i++){
+        if(db->cidadaos[db->vagas[i].index_cidadao].num_utente == mensagem.dados.num_utente){
+            PID_filho=db->vagas[i].PID_filho;
+            break;
+        }
+    }
+    sem_mutex_up();
+    debug("PID_filho cancela pedido: %d", PID_filho);
+    if(PID_filho == 0)
+        erro("S10.1) Não foi encontrada nenhuma sessão do cidadão %d, %s", mensagem.dados.num_utente, mensagem.dados.nome);
+    else
+        sucesso("S10.1) Foi encontrada a sessão do cidadão %d, %s na sala com o index %d", mensagem.dados.num_utente, mensagem.dados.nome, vaga_ativa);
 
     // S10.2) Envia um sinal SIGTERM ao processo Servidor Dedicado (filho) que está a tratar da vacinação;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S10.2) Enviado sinal SIGTERM ao Servidor Dedicado com PID=%d", <PID_filho>);
-
+    kill(PID_filho, SIGTERM);
+    sucesso("S10.2) Enviado sinal SIGTERM ao Servidor Dedicado com PID=%d", PID_filho);
     debug(">");
 }
 
@@ -421,16 +520,24 @@ void termina_servidor(int sinal) {
     // S11) Implemente a função termina_servidor(), que irá tratar do fecho do servidor, e que:
 
     // S11.1) Envia um sinal SIGTERM a todos os processos Servidor Dedicado (filhos) ativos;
-
+    sem_mutex_down();
+    for(int i =0; i<MAX_VAGAS; i++){
+        if(db->vagas[i].PID_filho > 0)
+            kill(db->vagas[i].PID_filho, SIGTERM);
+    }
+    sem_mutex_up();
     // S11.2) Grava o ficheiro FILE_ENFERMEIROS, usando a função save_binary();
-
+    save_binary(FILE_ENFERMEIROS, (db->enfermeiros), sizeof(Enfermeiro)*db->num_enfermeiros);
     // S11.3) Grava o ficheiro FILE_CIDADAOS, usando a função save_binary();
-
+    save_binary(FILE_CIDADAOS, (db->cidadaos), sizeof(Cidadao)*db->num_cidadaos);
     // S11.4) Remove do sistema (IPC Remove) os semáforos, a Memória Partilhada e a Fila de Mensagens.
+        msgctl(msg_id, IPC_RMID, NULL);
+        semctl(sem_id, 0, IPC_RMID, NULL);
+        shmctl(shm_id, IPC_RMID, NULL);
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S11.4) Servidor Terminado");
+    sucesso("S11.4) Servidor Terminado");
     // S11.5) Termina o processo servidor com exit status 0.
-
+    exit(0);
     debug(">");
 }
 
@@ -440,11 +547,14 @@ void termina_servidor_dedicado(int sinal) {
     // S12) Implemente a função termina_servidor_dedicado(), que irá tratar do fecho do servidor dedicado, e que:
 
     // S12.1) Envia a resposta para o Cidadao, chamando a função envia_resposta_cidadao() com o campo status=CANCELADA, para indicar que a consulta foi cancelada;
+    resposta.dados.status = CANCELADA;
+    envia_resposta_cidadao();
     // S12.2) Liberta a vaga vaga_ativa da BD de Vagas, invocando a função liberta_vaga(vaga_ativa);
-
+    liberta_vaga(vaga_ativa);
     // S12.3) Termina o processo do servidor dedicado com exit status 0;
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-    // sucesso("S12.3) Servidor Dedicado Terminado");
+    sucesso("S12.3) Servidor Dedicado Terminado");
+    exit(0);
 
     debug(">");
 }

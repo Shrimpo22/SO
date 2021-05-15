@@ -127,7 +127,7 @@ void pedido() {
 		if(resposta.dados.status == DESCONHECIDO){
         // C5.1) Se o status for DESCONHECIDO, imprime uma mensagem de erro, e termina com exit status 1;
         // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
-			erro("C5.1) Não existe registo do utente %d, %s", resposta.dados.cidadao.num_utente, resposta.dados.cidadao.nome);
+			erro("C5.1) Não existe registo do utente %d, %s", mensagem.dados.num_utente, mensagem.dados.nome);
 			exit(1);
 		}
 
