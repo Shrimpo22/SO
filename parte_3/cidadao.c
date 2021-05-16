@@ -69,7 +69,7 @@ void cria_mensagem() {
     // Outputs esperados (itens entre <> substituídos pelos valores correspondentes):
     printf("\tNúmero de Utente: ");
 	scanf("%d", &mensagem.dados.num_utente);
-	printf("\tNome: ");
+	printf("\n\tNome: ");
 	my_gets(mensagem.dados.nome, 100);
 	sucesso("C2.1) Dados Cidadão: %d, %s", mensagem.dados.num_utente, mensagem.dados.nome);
 
