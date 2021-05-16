@@ -1,7 +1,7 @@
 /******************************************************************************
  ** ISCTE-IUL: Trabalho prático 3 de Sistemas Operativos
  **
- ** Aluno: Nº:       Nome: 
+ ** Aluno: Nº:98654       Nome: Vasco do Nascimento Paiva Araujo
  ** Nome do Módulo: cidadao.c v3
  ** Descrição/Explicação do Módulo: 
  **
